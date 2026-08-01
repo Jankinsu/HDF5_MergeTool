@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# Large local HDF5 inputs and generated outputs
+*.h5
+*.hdf5
+*.hdf
+
+# Temporary merge files
+.*.tmp
+*.tmp
