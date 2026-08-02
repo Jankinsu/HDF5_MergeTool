@@ -1,0 +1,8 @@
+[project]
+name = "hdf5-merge"
+version = "0.1.0"
+description = "Merge HDF5 files by group and dataset paths."
+requires-python = ">=3.12"
+dependencies = [
+    "h5py>=3.10",
+]

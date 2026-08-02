@@ -14,3 +14,7 @@ env/
 # Temporary merge files
 .*.tmp
 *.tmp
+
+# Local uv cache and test temporary files
+.uv-cache/
+.test-tmp/

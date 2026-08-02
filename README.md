@@ -102,32 +102,35 @@ Group 内 Dataset 的长度可以不同。例如某个场景的 `bsc_amp` 可能
 
 ## 安装依赖
 
-推荐使用项目环境安装：
+项目统一使用 `uv` 管理 Python 版本和依赖。默认 Python 版本为 3.12：
 
 ```text
-uv pip install -r requirements.txt
+uv python pin 3.12
+uv sync
 ```
 
-也可以使用普通 Python 环境：
+运行命令和测试时使用项目环境：
 
 ```text
-python -m pip install -r requirements.txt
+uv run python -m unittest -v
 ```
 
-当前依赖为 `h5py`。
+当前依赖为 `h5py`，依赖事实来源为 `pyproject.toml` 和 `uv.lock`。
+
+项目版本当前为 `0.1.0`，对应 Git tag 为 `v0.1.0`。修改版本时必须同步更新项目版本和 Git tag。
 
 ## 使用方法
 
 合并 Vps 文件：
 
 ```text
-python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5
+uv run python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5
 ```
 
 合并 Hps 文件：
 
 ```text
-python hdf5_merge.py 182Hps.h5 352Hps.h5 --output merged_Hps.h5
+uv run python hdf5_merge.py 182Hps.h5 352Hps.h5 --output merged_Hps.h5
 ```
 
 如果不指定 `--output`，工具会根据输入文件名推断：
@@ -139,13 +142,13 @@ python hdf5_merge.py 182Hps.h5 352Hps.h5 --output merged_Hps.h5
 只校验输入文件而不生成输出：
 
 ```text
-python hdf5_merge.py 182Vps.h5 352Vps.h5 --validate-only
+uv run python hdf5_merge.py 182Vps.h5 352Vps.h5 --validate-only
 ```
 
 如果目标文件已经存在，工具默认拒绝覆盖。确认可以覆盖时显式使用：
 
 ```text
-python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5 --force
+uv run python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5 --force
 ```
 
 ## 校验和安全写出
@@ -163,7 +166,7 @@ python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5 --force
 运行单元测试：
 
 ```text
-python -m unittest -v
+uv run python -m unittest -v
 ```
 
 测试覆盖：
@@ -176,5 +179,6 @@ python -m unittest -v
 
 - `hdf5_merge.py`：命令行工具实现；
 - `test_hdf5_merge.py`：单元测试；
-- `requirements.txt`：Python 依赖；
+- `pyproject.toml`：项目元数据和 Python 依赖声明；
+- `uv.lock`：锁定依赖版本；
 - `*.h5`：本地输入和合并结果数据，不纳入 Git 版本控制。
