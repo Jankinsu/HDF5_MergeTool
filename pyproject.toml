@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hdf5-merge"
-version = "0.1.0"
+version = "0.2.0"
 description = "Merge HDF5 files by scene group paths."
 requires-python = ">=3.12"
 dependencies = [
