@@ -151,6 +151,19 @@ uv run python hdf5_merge.py 182Vps.h5 352Vps.h5 --validate-only
 uv run python hdf5_merge.py 182Vps.h5 352Vps.h5 --output merged_Vps.h5 --force
 ```
 
+## Runtime progress
+
+During a real merge, the command line prints ASCII progress messages so a long HDF5 copy does not look stalled. For example:
+
+```text
+[progress] copying 182Vps.h5: /backward_scattering_data 47% (160/336)
+[progress] copying 352Vps.h5: /forward_scattering_data 100% (336/336)
+[progress] temporary write complete; validating output...
+[progress] output validation complete: merged_Vps.h5
+```
+
+Progress is measured by scene Groups. Dataset copying inside one scene is not split into smaller messages, so a single interval may still take some time.
+
 ## 校验和安全写出
 
 合并前会检查：

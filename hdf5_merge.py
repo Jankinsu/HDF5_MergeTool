@@ -14,12 +14,13 @@ import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 import h5py
 
 
 EXPECTED_ROOT_GROUPS = {"backward_scattering_data", "forward_scattering_data"}
+ProgressCallback = Callable[[str], None]
 
 
 class MergeError(RuntimeError):
@@ -92,8 +93,16 @@ def _validate_overlapping_nodes(
             _validate_overlapping_nodes(left, right, path)
 
 
-def validate_inputs(first_path: Path, second_path: Path) -> tuple[Path, Path]:
+def validate_inputs(
+    first_path: Path,
+    second_path: Path,
+    *,
+    progress: ProgressCallback | None = None,
+) -> tuple[Path, Path]:
     """Open and validate input files, returning their resolved paths."""
+
+    if progress:
+        progress("[progress] validating input files and compatibility...")
 
     first = first_path.expanduser().resolve()
     second = second_path.expanduser().resolve()
@@ -131,6 +140,8 @@ def validate_inputs(first_path: Path, second_path: Path) -> tuple[Path, Path]:
     except OSError as exc:
         raise MergeError(f"Unable to open HDF5 input: {exc}") from exc
 
+    if progress:
+        progress(f"[progress] input validation complete: {first.name} + {second.name}")
     return first, second
 
 
@@ -159,30 +170,44 @@ def _count_subtree(node: h5py.HLObject) -> tuple[int, int]:
     return groups, datasets
 
 def _merge_group(
-    source: h5py.Group, target: h5py.Group, stats: MergeStats
+    source: h5py.Group,
+    target: h5py.Group,
+    stats: MergeStats,
+    *,
+    source_label: str = "",
+    progress: ProgressCallback | None = None,
 ) -> None:
-    for name in source:
+    names = list(source)
+    total = len(names)
+    progress_step = max(1, total // 20)
+    for index, name in enumerate(names, start=1):
         source_node = source[name]
         if name not in target:
             _copy_new_node(source_node, target, name)
             copied_groups, copied_datasets = _count_subtree(source_node)
             stats.groups_copied += copied_groups
             stats.datasets_copied += copied_datasets
-            continue
-
-        target_node = target[name]
-        if isinstance(source_node, h5py.Group):
-            # The group itself is duplicated, so preserve the first source's
-            # attributes and recurse only to find children absent from it.
+        elif isinstance(source_node, h5py.Group):
+            target_node = target[name]
             if not isinstance(target_node, h5py.Group):
                 raise MergeError(f"Node type conflict during merge at {source_node.name}")
             stats.groups_skipped += 1
-            _merge_group(source_node, target_node, stats)
+            _merge_group(
+                source_node,
+                target_node,
+                stats,
+                source_label=source_label,
+                progress=progress,
+            )
         else:
-            # Validation already checked type, dtype and shape.  The first
-            # source owns both the data and attributes for duplicate datasets.
             stats.datasets_skipped += 1
 
+        if progress and (index == 1 or index == total or index % progress_step == 0):
+            percent = 100 if total == 0 else index * 100 // total
+            progress(
+                f"[progress] copying {source_label}: {_display(source.name)} "
+                f"{percent}% ({index}/{total})"
+            )
 
 def _default_output_name(first: Path, second: Path) -> str:
     names = f"{first.stem} {second.stem}".lower()
@@ -199,10 +224,11 @@ def merge_files(
     output_path: Path,
     *,
     force: bool = False,
+    progress: ProgressCallback | None = None,
 ) -> MergeStats:
     """Validate and merge two files into *output_path* atomically."""
 
-    first, second = validate_inputs(first_path, second_path)
+    first, second = validate_inputs(first_path, second_path, progress=progress)
     output = output_path.expanduser().resolve()
     if output in {first, second}:
         raise MergeError("Output file must be different from both input files")
@@ -217,13 +243,45 @@ def merge_files(
         with h5py.File(first, "r") as left, h5py.File(second, "r") as right:
             with h5py.File(temporary, "w") as result:
                 _copy_attributes(left.attrs, result.attrs)
-                _merge_group(left, result, stats)
-                _merge_group(right, result, stats)
+                if progress:
+                    progress(f"[progress] writing temporary output: {temporary.name}")
+                for source, source_path in ((left, first), (right, second)):
+                    if progress:
+                        progress(f"[progress] copying source: {source_path.name}")
+                    for name in source:
+                        source_node = source[name]
+                        if name not in result and isinstance(source_node, h5py.Group):
+                            target_node = result.create_group(name)
+                            _copy_attributes(source_node.attrs, target_node.attrs)
+                            copied_groups, copied_datasets = _count_subtree(source_node)
+                            stats.groups_copied += copied_groups
+                            stats.datasets_copied += copied_datasets
+                            _merge_group(
+                                source_node,
+                                target_node,
+                                stats,
+                                source_label=source_path.name,
+                                progress=progress,
+                            )
+                        elif name in result and isinstance(source_node, h5py.Group):
+                            _merge_group(
+                                source_node,
+                                result[name],
+                                stats,
+                                source_label=source_path.name,
+                                progress=progress,
+                            )
+                        else:
+                            raise MergeError(f"Unexpected root Dataset: /{name}")
                 result.flush()
+        if progress:
+            progress("[progress] temporary write complete; validating output...")
         validate_output(temporary, first, second)
         if output.exists() and not force:
             raise MergeError(f"Output appeared during merge: {output}")
         os.replace(temporary, output)
+        if progress:
+            progress(f"[progress] output validation complete: {output.name}")
     except Exception:
         try:
             temporary.unlink(missing_ok=True)
@@ -231,7 +289,6 @@ def merge_files(
             pass
         raise
     return stats
-
 
 def _iter_nodes(group: h5py.Group) -> Iterable[tuple[str, h5py.HLObject]]:
     for name in group:
@@ -282,14 +339,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    progress = print
     try:
-        first, second = validate_inputs(args.first, args.second)
         if args.validate_only:
+            first, second = validate_inputs(args.first, args.second, progress=progress)
             print(f"Validation passed: {first.name}, {second.name}")
             return 0
 
-        output = args.output or Path(_default_output_name(first, second))
-        stats = merge_files(first, second, output, force=args.force)
+        output = args.output or Path(_default_output_name(args.first, args.second))
+        stats = merge_files(
+            args.first,
+            args.second,
+            output,
+            force=args.force,
+            progress=progress,
+        )
         print(f"Merged successfully: {output.resolve()}")
         print(
             "Groups copied/skipped: "
