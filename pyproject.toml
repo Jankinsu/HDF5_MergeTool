@@ -1,8 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "hdf5-merge"
 version = "0.1.0"
-description = "Merge HDF5 files by group and dataset paths."
+description = "Merge HDF5 files by scene group paths."
 requires-python = ">=3.12"
 dependencies = [
     "h5py>=3.10",
 ]
+
+[project.scripts]
+hdf5-merge = "hdf5_merge:main"
+
+[tool.setuptools]
+py-modules = ["hdf5_merge"]

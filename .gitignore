@@ -18,3 +18,5 @@ env/
 # Local uv cache and test temporary files
 .uv-cache/
 .test-tmp/
+
+*.egg-info/
